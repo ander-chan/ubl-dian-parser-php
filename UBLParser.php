@@ -1,6 +1,7 @@
 <?php
-
-use DOMDocument;
+ /* Copyright (c)    2020 Ahmet Imamoglu      ahmet@ahmeti.com.tr
+  * Copyright (C)    2024 Andersson Paz       npander@hotmail.com
+  */
 
 class UBLParser
 {
@@ -10,6 +11,7 @@ class UBLParser
         'ProfileID' => null,
         'ID' => null,
         'UUID' => null,
+        'QRCode'=>null,
         'IssueDate' => null,
         'IssueTime' => null,
         'InvoiceTypeCode' => null,
@@ -21,7 +23,8 @@ class UBLParser
             'WebsiteURI' => null,
             'TaxID' => null,
             'Name' => null,
-            'StreetName' => null,
+            'CompanyID' => null,
+            'AddressLine' => null,
             'BuildingName' => null,
             'BuildingNumber' => null,
             'CitySubdivisionName' => null,
@@ -122,7 +125,7 @@ class UBLParser
                     } elseif ($this->isNode($node3, 'cac:PartyIdentification')) {
 
                         foreach ($node3->childNodes as $node4) {
-                            if ($this->isNode($node4, 'cbc:ID') && $node4->getAttribute('schemeID') === 'VKN') {
+                            if ($this->isNode($node4, 'cbc:ID') && $node4->getAttribute('schemeID') === '3') {
                                 $this->data['Supplier']['TaxID'] = $node4->nodeValue;
                             } elseif ($this->isNode($node4, 'cbc:ID') && $node4->getAttribute('schemeID') === 'TCKN') {
                                 $this->data['Supplier']['TaxID'] = $node4->nodeValue;
@@ -137,11 +140,17 @@ class UBLParser
                             }
                         }
 
-                    } elseif ($this->isNode($node3, 'cac:PostalAddress')) {
-
+                    } elseif ($this->isNode($node3, 'cac:PhysicalLocation')) {
+                        //cac:PhysicalLocation/cac:Address
+                        if(!empty($node3->childNodes) && ($node3=$node3->childNodes[0]))
                         foreach ($node3->childNodes as $node4) {
-                            if ($this->isNode($node4, 'cbc:StreetName')) {
-                                $this->data['Supplier']['StreetName'] = $node4->nodeValue;
+                            if ($this->isNode($node4, 'cac:AddressLine')) {
+                                //concatenate cac:Line
+                                $nodeValues = array_map(function($node) {
+                                    return $node->nodeValue;
+                                }, iterator_to_array($node4->childNodes));
+                                $this->data['Supplier']['AddressLine']  = implode(', ', $nodeValues);;
+                              
 
                             } elseif ($this->isNode($node4, 'cbc:BuildingName')) {
                                 $this->data['Supplier']['BuildingName'] = $node4->nodeValue;
@@ -158,8 +167,11 @@ class UBLParser
                             } elseif ($this->isNode($node4, 'cbc:PostalZone')) {
                                 $this->data['Supplier']['PostalZone'] = $node4->nodeValue;
 
-                            } elseif ($this->isNode($node4, 'cbc:Region')) {
-                                $this->data['Supplier']['Region'] = $node4->nodeValue;
+                            } elseif ($this->isNode($node4, 'cbc:CountrySubentity')) {
+                                $this->data['Supplier']['CountrySubentity'] = $node4->nodeValue;
+
+                            } elseif ($this->isNode($node4, 'cbc:CountrySubentityCode')) {
+                                $this->data['Supplier']['CountrySubentityCode'] = $node4->nodeValue;
 
                             } elseif ($this->isNode($node4, 'cbc:District')) {
                                 $this->data['Supplier']['District'] = $node4->nodeValue;
@@ -177,6 +189,10 @@ class UBLParser
                     } elseif ($this->isNode($node3, 'cac:PartyTaxScheme')) {
 
                         foreach ($node3->childNodes as $node4) {
+                            if ($this->isNode($node4, 'cbc:TaxLevelCode')) {
+                                $this->data['Supplier']['TaxLevelCode'] = $node4->nodeValue;
+                            }
+                            
 
                             if ($this->isNode($node4, 'cac:TaxScheme')) {
 
@@ -185,6 +201,8 @@ class UBLParser
                                         $this->data['Supplier']['TaxOfficeName'] = $node5->nodeValue;
                                     }
                                 }
+                            }if ($this->isNode($node4, 'cbc:CompanyID')) {                                
+                                 $this->data['Supplier']['CompanyID'] = $node4->nodeValue;   
                             }
                         }
 
@@ -198,6 +216,15 @@ class UBLParser
                                 $this->data['Supplier']['PersonFamilyName'] = $node4->nodeValue;
                             }
                         }
+                    } elseif ($this->isNode($node3, 'cac:Contact')) {
+                        foreach ($node3->childNodes as $node5) {
+                            if ($this->isNode($node5, 'cbc:Telephone')) {
+                                $this->data['Supplier']['Telephone'] = $node5->nodeValue;
+                            }
+                            if ($this->isNode($node5, 'cbc:ElectronicMail')) {
+                                $this->data['Supplier']['ElectronicMail'] = $node5->nodeValue;
+                            }
+                        }                                    
                     }
                 }
             }
@@ -238,14 +265,41 @@ class UBLParser
                     } elseif ($this->isNode($node3, 'cbc:CalculationSequenceNumeric')) {
                         $this->data['TaxSubtotal']['CalculationSequenceNumeric'] = $node3->nodeValue;
 
-                    } elseif ($this->isNode($node3, 'cbc:Percent')) {
-                        $this->data['TaxSubtotal']['Percent'] = $node3->nodeValue;
+                    }  elseif ($this->isNode($node3, 'cac:TaxCategory')) {
+                        foreach ($node3->childNodes as $node4) {
+                            if ($this->isNode($node4, 'cbc:Percent')) {
+                                $this->data['TaxSubtotal']['Percent'] = $node4->nodeValue;
+                            }elseif ($this->isNode($node4, 'cac:TaxScheme')) {
+                                foreach($node4->childNodes as $node5){
+                                    if ($this->isNode($node5, 'cbc:ID'))
+                                        $this->data['TaxSubtotal']['ID'] = $node5->nodeValue;
+                                    if ($this->isNode($node5, 'cbc:Name'))
+                                        $this->data['TaxSubtotal']['Name'] = $node5->nodeValue;
+                                }
+                                
+                            }
+                        }
                     }
                 }
             }
         }
     }
-
+    protected function paymentMeans($node){
+       $i = 0;
+        foreach ($node->childNodes as $node2) {
+            if ($this->isNode($node2, 'cbc:ID')) {
+                $this->data['PaymentMeans']['ID'] = $node2->nodeValue;
+            } elseif ($this->isNode($node2, 'cbc:PaymentMeansCode')) {
+                $this->data['PaymentMeans']['Code'] = $node2->nodeValue;
+            } elseif ($this->isNode($node2, 'cbc:PaymentDueDate')) {
+                $this->data['PaymentMeans']['DueDate'] = $node2->nodeValue;
+            } elseif ($this->isNode($node2, 'cbc:PaymentID')) {
+                $this->data['PaymentMeans']['PaymentID'] = $node2->nodeValue;
+            }
+            $i++;
+        }
+        
+    }
     protected function legalMonetaryTotal($node): void
     {
         foreach ($node->childNodes as $node2) {
@@ -327,8 +381,12 @@ class UBLParser
                             } elseif ($this->isNode($node4, 'cbc:CalculationSequenceNumeric')) {
                                 $invoiceLine['TaxSubtotal']['CalculationSequenceNumeric'] = $node4->nodeValue;
 
-                            } elseif ($this->isNode($node4, 'cbc:Percent')) {
-                                $invoiceLine['TaxSubtotal']['Percent'] = $node4->nodeValue;
+                            } elseif ($this->isNode($node4, 'cac:TaxCategory')) {
+                                foreach ($node4->childNodes as $node5) {
+                                    if ($this->isNode($node5, 'cbc:Percent')) {
+                                        $invoiceLine['TaxSubtotal']['Percent'] = $node5->nodeValue;
+                                    }
+                                }
                             }
                         }
                     }
@@ -340,6 +398,23 @@ class UBLParser
 
                     if ($this->isNode($node3, 'cbc:Name')) {
                         $invoiceLine['Item']['Name'] = $node3->nodeValue;
+                    }
+                    if ($this->isNode($node3, 'cbc:Description')) {
+                        $invoiceLine['Item']['Description'] = $node3->nodeValue;
+                    }
+                    elseif ($this->isNode($node3, 'cac:StandardItemIdentification')) {
+
+                        $idNode = $node3->getElementsByTagName('ID')->item(0); // Acceso directo al nodo 'cbc:ID'
+                    
+                        if ($idNode) {
+                            $invoiceLine['Item']['StandardItemID'] = $idNode->nodeValue;
+                            /*[
+                                'ID' => trim($idNode->nodeValue),
+                               // 'schemeID' => $idNode->getAttribute('schemeID'),
+                               // 'schemeName' => $idNode->getAttribute('schemeName')
+                            ];*/
+                        }
+                    
                     }
                 }
 
@@ -358,7 +433,7 @@ class UBLParser
         $this->data['InvoiceLines'][] = $invoiceLine;
     }
 
-    public function set(string $xmlString): static
+    public function set(string $xmlString)
     {
         $doc = new DOMDocument();
         $doc->loadXML($xmlString, LIBXML_NOERROR);
@@ -379,6 +454,9 @@ class UBLParser
 
             } elseif ($this->isNode($node, 'cbc:UUID')) {
                 $this->data['UUID'] = $node->nodeValue;
+
+            } elseif ($this->isNode($node, 'ext:UBLExtensions')) {
+                $this->data['QRCode'] = $this->getQRCode($node);
 
             } elseif ($this->isNode($node, 'cbc:IssueDate')) {
                 $this->data['IssueDate'] = $node->nodeValue;
@@ -412,10 +490,24 @@ class UBLParser
 
             } elseif ($this->isNode($node, 'cac:InvoiceLine')) {
                 $this->invoiceLine($node);
+            }else if ($this->isNode($node, 'cac:PaymentMeans')) {
+                $this->paymentMeans($node);
             }
         }
 
         return $this;
+    }
+    private function getQRCode(DOMNode $node) {
+        $xpath = new DOMXPath($node->ownerDocument);
+        $xpath->registerNamespace('sts', 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2');
+    
+        $qrCodeNode = $xpath->query('.//sts:QRCode', $node)->item(0);
+    
+        if ($qrCodeNode) {
+            return $qrCodeNode->nodeValue;
+        } else {
+            return null;
+        }
     }
 
     public function get(): array
